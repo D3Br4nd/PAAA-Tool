@@ -1,0 +1,19 @@
+node_modules
+.svelte-kit
+build
+dist
+.git
+.github
+*.log
+
+# Never bake DB files into the app image
+sqld-data
+
+# Never bake secrets or user data into the app image
+.env
+.env.*
+!.env.example
+paaa_data
+uploads
+
+
