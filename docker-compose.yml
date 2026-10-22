@@ -69,7 +69,8 @@ services:
       retries: 3
       start_period: 120s
     networks:
-      {plv_paaa_proxy: {}, plv_paaa_data: {}}
+      plv_paaa_proxy: {}
+      plv_paaa_data: {}
 
   db:
     security_opt:
@@ -117,10 +118,10 @@ services:
     mem_limit: 2g
     cpus: 2.0
     networks:
-      {plv_paaa_data: {}}
+      plv_paaa_data: {}
 
 networks:
-  
+
   plv_paaa_data:
     external: true
     name: ${NETWORK_PLV_PAAA_DATA}
