@@ -5,6 +5,7 @@ x-logging: &default-logging
 
 services:
   app:
+    pids_limit: ${RESOURCE_APP_PIDS}
     container_name: paaa-tool-app
     build:
       context: .
@@ -71,6 +72,7 @@ services:
           - app
 
   db:
+    pids_limit: ${RESOURCE_DB_PIDS}
     container_name: paaa-tool-db
     image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
     # Persist database + namespace files via local bind mount (NOT a named volume)
