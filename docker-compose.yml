@@ -1,3 +1,8 @@
+x-logging: &default-logging
+  driver: journald
+  options:
+    tag: "{{.Name}}"
+
 services:
   app:
     container_name: paaa-tool-app
@@ -6,31 +11,32 @@ services:
       dockerfile: Dockerfile
     environment:
       # App -> DB (internal, unencrypted HTTP on the private Docker network)
-      DATABASE_URL: ${DATABASE_URL:-http://db:8080}
-      DATABASE_AUTH_TOKEN: ${DATABASE_AUTH_TOKEN:-}
+      DATABASE_URL: "${DATABASE_URL}"
+      DATABASE_AUTH_TOKEN: "${DATABASE_AUTH_TOKEN}"
       # SvelteKit (adapter-node) binds to these
-      HOST: ${HOST:-0.0.0.0}
-      PORT: ${PORT:-3000}
-      ORIGIN: ${ORIGIN}
+      HOST: "${HOST}"
+      PORT: "${PORT}"
+      ORIGIN: "${ORIGIN}"
       # Header check for determining client IP transparency
-      ADDRESS_HEADER: X-Forwarded-For
-      XFF_DEPTH: 1
-      NODE_ENV: production
-      ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADDRESS_HEADER: "${ADDRESS_HEADER}"
+      XFF_DEPTH: "${XFF_DEPTH}"
+      NODE_ENV: "${NODE_ENV}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
       # Session JWT secret (required: app refuses to start without it)
-      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_SECRET: "${AUTH_SECRET}"
       # App version (informational, see .env / README)
-      APP_VERSION: ${APP_VERSION:-}
+      APP_VERSION: "${APP_VERSION}"
       # Schema push safety: set to "true" only to approve destructive changes
-      DRIZZLE_FORCE_PUSH: ${DRIZZLE_FORCE_PUSH:-false}
+      DRIZZLE_FORCE_PUSH: "${DRIZZLE_FORCE_PUSH}"
       # Max request body accepted by the Bun adapter. WITHOUT this the adapter
       # defaults to 512K, which silently overrides the 5 MB / 20 MB ceilings
       # declared in src/lib/server/uploads.ts — large uploads fail with an
       # opaque 413 before ever reaching the handler.
-      BODY_SIZE_LIMIT: ${BODY_SIZE_LIMIT:-21M}
+      BODY_SIZE_LIMIT: "${BODY_SIZE_LIMIT}"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     # Sized for event day (CaTE): several hundred concurrent players.
     #
     # Memory is the real constraint, not CPU. Every in-flight upload is buffered
@@ -52,6 +58,13 @@ services:
     expose:
       - "3000"
     restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const response = await fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/', { headers: { 'X-Forwarded-For': '127.0.0.1' }, signal: AbortSignal.timeout(5000) }); process.exit(response.status === 200 ? 0 : 1);"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       plv_network:
         aliases:
@@ -59,16 +72,16 @@ services:
 
   db:
     container_name: paaa-tool-db
-    image: ghcr.io/tursodatabase/libsql-server:latest
+    image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
     # Persist database + namespace files via local bind mount (NOT a named volume)
     volumes:
       - ./sqld-data:/var/lib/sqld
     environment:
       # Listen on all interfaces INSIDE the container/network (no host port publishing)
-      SQLD_HTTP_LISTEN_ADDR: 0.0.0.0:8080
-      SQLD_ADMIN_LISTEN_ADDR: 0.0.0.0:9090
+      SQLD_HTTP_LISTEN_ADDR: "${SQLD_HTTP_LISTEN_ADDR}"
+      SQLD_ADMIN_LISTEN_ADDR: "${SQLD_ADMIN_LISTEN_ADDR}"
       # Optional: protect admin API (recommended). Leave empty to disable auth.
-      LIBSQL_ADMIN_AUTH_KEY: ${LIBSQL_ADMIN_AUTH_KEY:-}
+      LIBSQL_ADMIN_AUTH_KEY: "${LIBSQL_ADMIN_AUTH_KEY}"
     # IMPORTANT: the image uses a wrapper entrypoint; override it so flags aren't duplicated.
     entrypoint: ["/bin/sqld"]
     command:
@@ -87,6 +100,14 @@ services:
       - "8080"
       - "9090"
     restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      # The image has bash but no curl/wget; query the HTTP health endpoint directly.
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; IFS= read -r status <&3; [[ \"$$status\" == HTTP/*\" 200 \"* ]]"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     # SQLite is memory-light (idle ~8 MB); the extra RAM goes to page cache,
     # which is what helps when hundreds of players read the leaderboard at once.
     mem_limit: 2g
