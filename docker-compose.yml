@@ -5,6 +5,8 @@ x-logging: &default-logging
 
 services:
   app:
+    security_opt:
+      - label=type:container_t
     pids_limit: ${RESOURCE_APP_PIDS}
     container_name: paaa-tool-app
     build:
@@ -54,8 +56,8 @@ services:
     cpus: 4.0
     volumes:
       # Persist user uploads and team data across container rebuilds
-      - ./paaa_data:/app/paaa_data
-      - ./paaa_data/uploads:/app/uploads
+      - "./paaa_data:/app/paaa_data:Z"
+      - "./paaa_data/uploads:/app/uploads:Z"
     expose:
       - "3000"
     restart: unless-stopped
@@ -67,17 +69,17 @@ services:
       retries: 3
       start_period: 120s
     networks:
-      plv_network:
-        aliases:
-          - app
+      {plv_paaa_proxy: {}, plv_paaa_data: {}}
 
   db:
+    security_opt:
+      - label=type:container_t
     pids_limit: ${RESOURCE_DB_PIDS}
     container_name: paaa-tool-db
     image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
     # Persist database + namespace files via local bind mount (NOT a named volume)
     volumes:
-      - ./sqld-data:/var/lib/sqld
+      - "./sqld-data:/var/lib/sqld:Z"
     environment:
       # Listen on all interfaces INSIDE the container/network (no host port publishing)
       SQLD_HTTP_LISTEN_ADDR: "${SQLD_HTTP_LISTEN_ADDR}"
@@ -115,11 +117,13 @@ services:
     mem_limit: 2g
     cpus: 2.0
     networks:
-      plv_network:
-        aliases:
-          - db
+      {plv_paaa_data: {}}
 
 networks:
-  plv_network:
+  
+  plv_paaa_data:
     external: true
-    name: plv_network
+    name: ${NETWORK_PLV_PAAA_DATA}
+  plv_paaa_proxy:
+    external: true
+    name: ${NETWORK_PLV_PAAA_PROXY}
